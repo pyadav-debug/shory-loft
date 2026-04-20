@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Cozy Loft · Shory</title>
+<style>
+  :root { --ink:#2a2620; --ink-soft:#6e665c; --cream:#f3ece0; --line:#d9cfc0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--cream); color: var(--ink); font-family: Georgia, 'Times New Roman', serif; overflow: hidden; }
+  #stage { position: fixed; inset: 0; }
+  canvas { display: block; cursor: grab; }
+  canvas:active { cursor: grabbing; }
+
+  .ui { position: fixed; pointer-events: none; z-index: 10; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
+  .ui > * { pointer-events: auto; }
+
+  .caption { top: 24px; left: 28px; color: var(--ink); }
+  .caption .eyebrow { font-size: 10px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--ink-soft); }
+  .caption .title { font-family: Georgia, serif; font-style: italic; font-size: 28px; margin-top: 3px; }
+
+  .chips { top: 24px; right: 28px; display: flex; gap: 8px; }
+  .chip { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,0.75); color: var(--ink-soft); cursor: pointer; transition: all 0.15s; }
+  .chip:hover { background: #fff; }
+  .chip.active { background: #1a1915; color: var(--cream); border-color: #1a1915; }
+
+  .wall-hint { position: fixed; top: 100px; left: 28px; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-soft); background: rgba(255,255,255,0.7); padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); pointer-events: none; opacity: 0.85; z-index: 10; }
+
+  .scene-card { position: fixed; top: 100px; right: 28px; width: 220px; background: rgba(255,255,255,0.88); backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; box-shadow: 0 8px 24px rgba(60,40,20,0.06); z-index: 10; font-family: -apple-system, system-ui, sans-serif; }
+  .scene-card .lbl { font-size: 9px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 4px; }
+  .scene-card .ttl { font-family: Georgia, serif; font-size: 15px; color: var(--ink); margin-bottom: 4px; }
+  .scene-card .desc { font-size: 12px; color: var(--ink-soft); line-height: 1.5; }
+
+  .bar { bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 3px; background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); border: 1px solid var(--line); border-radius: 999px; padding: 5px; box-shadow: 0 10px 30px rgba(60,40,20,0.1); flex-wrap: wrap; max-width: calc(100vw - 48px); justify-content: center; }
+  .bar button { font-family: -apple-system, system-ui, sans-serif; font-size: 12px; padding: 7px 13px; border-radius: 999px; border: none; background: none; color: var(--ink); cursor: pointer; white-space: nowrap; transition: background 0.15s; }
+  .bar button:hover { background: rgba(0,0,0,0.05); }
+  .bar button.on { background: #1a1915; color: var(--cream); }
+  .bar .sep { width: 1px; height: 16px; background: var(--line); margin: 0 3px; }
+
+  .hint { bottom: 24px; left: 28px; font-size: 10px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--ink-soft); pointer-events: none; }
+
+  @media (max-width: 720px) {
+    .scene-card, .wall-hint { display: none; }
+    .caption .title { font-size: 20px; }
+    .hint { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage"></div>
+
+<div class="ui caption">
+  <div class="eyebrow">The Cozy Loft · Shory HQ</div>
+  <div class="title" id="cap">Golden hour · 17:42</div>
+</div>
+
+<div class="ui chips">
+  <button class="chip active">Cozy</button>
+  <button class="chip">Isometric</button>
+</div>
+
+<div class="wall-hint">← Move mouse to shift wall tone →</div>
+
+<div class="scene-card">
+  <div class="lbl">Current scene</div>
+  <div class="ttl" id="sceneTtl">Dog goes for a drive</div>
+  <div class="desc" id="sceneDesc">The pup takes his little red car for a spin around the loft. The cat walks her figure-8 on the rug.</div>
+</div>
+
+<div class="ui bar">
+  <button id="btnDrive" class="on">🚗 Dog drives</button>
+  <button id="btnPlay">🎾 They play</button>
+  <button id="btnWalk">🐾 Just walk</button>
+  <span class="sep"></span>
+  <button id="btnRotate" class="on">↻ Auto</button>
+  <button id="btnReset">⟲ Reset</button>
+  <span class="sep"></span>
+  <button id="btnDay">☀ Day</button>
+  <button id="btnDusk" class="on">◐ Dusk</button>
+  <button id="btnNight">☾ Night</button>
+</div>
+
+<div class="ui hint">Drag to orbit · Scroll to zoom</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ===================================================================
+// THE COZY LOFT — dog drives, cat plays, Shory on the wall
+// ===================================================================
+
+// Shory logo embedded as base64 JPEG (14KB)
+const SHORY_IMG = "data:image/jpeg;base64,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85/DPwbqvj7xrp/hfSInaW6kHnSBcrBED88jegA/M4Hev1I0ewt9K0mz0uzTZbWcCQQr6IihQPyFcn8J/hd4Q+GelPZeGrArNMB9pvJzvuJ8f3m9P9kYA9K7auepPmZaVgooorMYUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQBi+OfEVj4S8Iar4l1Fgttp1s87jP3iBwo9ycAfWvyz8TazfeIvEWo69qUhkvNQuXuJmP95jnH0HT8K/Tn4t+A9O+I/gq58Lape3tnbzOsnm2rgMGU5XIIwy55wfQV8Y/EP9lb4i+HZJJ/D4t/E9iMlTbER3AHvGx5P+6TW9GUVuTK54JRWnrnh7X9DuGg1rRNS06VTgrdWrx/zFZe4eorpIForV8OeG/EPiO8S00DRNR1OdzgLbW7P+ZAwPxr6x/Z0/Zgm0vUrbxV8R44HuIGEtppCsHVHHIaYjgkdkGR6ntUymo7jSudn+xf8L5fBPgWTxHrFuYtb11VkKOMNBbDlEPoTncfqB2r32iiuKT5nc0CiiikAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAMnhhnj8ueKOVD1V1BH5GsxvDHhtpPMPh7SS/8AeNlHn+Va1FAEdtbwW0YitoIoUHRY0Cj8hUlFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQB/9k=";
+
+const stage = document.getElementById('stage');
+const W = () => stage.clientWidth;
+const H = () => stage.clientHeight;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(W(), H());
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#f3ece0');
+scene.fog = new THREE.Fog('#f3ece0', 30, 70);
+
+const camera = new THREE.PerspectiveCamera(34, W()/H(), 0.1, 200);
+const cam = { radius: 21, theta: Math.PI * 0.28, phi: Math.PI * 0.36, target: new THREE.Vector3(0, 2, 0) };
+function applyCam() {
+  camera.position.set(
+    cam.target.x + cam.radius * Math.sin(cam.phi) * Math.cos(cam.theta),
+    cam.target.y + cam.radius * Math.cos(cam.phi),
+    cam.target.z + cam.radius * Math.sin(cam.phi) * Math.sin(cam.theta)
+  );
+  camera.lookAt(cam.target);
+}
+applyCam();
+
+// --- Lights ---
+const ambient = new THREE.AmbientLight('#ffffff', 0.45);
+scene.add(ambient);
+const hemi = new THREE.HemisphereLight('#ffd8a8', '#3b2e24', 0.6);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight('#ffd59a', 1.1);
+sun.position.set(-8, 14, 6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1536, 1536);
+sun.shadow.camera.left = -12; sun.shadow.camera.right = 12;
+sun.shadow.camera.top = 12; sun.shadow.camera.bottom = -12;
+sun.shadow.camera.near = 0.5; sun.shadow.camera.far = 35;
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+const warmFill = new THREE.PointLight('#ffc27a', 0.8, 18, 2);
+warmFill.position.set(2, 4, -2);
+scene.add(warmFill);
+const pendant = new THREE.PointLight('#ffb974', 0, 12, 2);
+pendant.position.set(0, 4.2, 0);
+scene.add(pendant);
+
+// --- Materials ---
+const M = {
+  wall:      new THREE.MeshStandardMaterial({ color:'#e9dcc7', roughness:0.95 }),
+  floorLt:   new THREE.MeshStandardMaterial({ color:'#c99a6b', roughness:0.75 }),
+  floorDk:   new THREE.MeshStandardMaterial({ color:'#a67548', roughness:0.75 }),
+  wood:      new THREE.MeshStandardMaterial({ color:'#7a5235', roughness:0.6 }),
+  woodLt:    new THREE.MeshStandardMaterial({ color:'#b58863', roughness:0.7 }),
+  metal:     new THREE.MeshStandardMaterial({ color:'#2b2b2b', roughness:0.35, metalness:0.7 }),
+  black:     new THREE.MeshStandardMaterial({ color:'#1a1a1a', roughness:0.6 }),
+  screen:    new THREE.MeshStandardMaterial({ color:'#0a0a0a', emissive:'#5a7a9a', emissiveIntensity:0.35 }),
+  couch:     new THREE.MeshStandardMaterial({ color:'#8a9a8a', roughness:0.9 }),
+  pillowA:   new THREE.MeshStandardMaterial({ color:'#d9a87a', roughness:0.95 }),
+  pillowB:   new THREE.MeshStandardMaterial({ color:'#c76e4a', roughness:0.95 }),
+  rug:       new THREE.MeshStandardMaterial({ color:'#b8564a', roughness:1 }),
+  leaf:      new THREE.MeshStandardMaterial({ color:'#4e7a4e', roughness:0.85 }),
+  leafLt:    new THREE.MeshStandardMaterial({ color:'#6a9a6a', roughness:0.85 }),
+  pot:       new THREE.MeshStandardMaterial({ color:'#b58160', roughness:0.9 }),
+  glass:     new THREE.MeshPhysicalMaterial({ color:'#cfe6f2', roughness:0.05, transmission:0.6, transparent:true, opacity:0.5 }),
+  lampShade: new THREE.MeshStandardMaterial({ color:'#f5e3b8', emissive:'#ffb974', emissiveIntensity:0 }),
+  lampBulb:  new THREE.MeshStandardMaterial({ color:'#fff0c8', emissive:'#ffb974', emissiveIntensity:0 }),
+  frame:     new THREE.MeshStandardMaterial({ color:'#3a2a1e', roughness:0.6 }),
+  posterBg:  new THREE.MeshStandardMaterial({ color:'#ffffff', roughness:0.85 }),
+  // Pets
+  catFur:    new THREE.MeshStandardMaterial({ color:'#2a2a2a', roughness:0.95 }),
+  catBelly:  new THREE.MeshStandardMaterial({ color:'#f5f0e8', roughness:0.95 }),
+  catNose:   new THREE.MeshStandardMaterial({ color:'#d48a8a', roughness:0.7 }),
+  dogFur:    new THREE.MeshStandardMaterial({ color:'#c7a074', roughness:0.95 }),
+  dogBelly:  new THREE.MeshStandardMaterial({ color:'#e8d5b8', roughness:0.95 }),
+  dogNose:   new THREE.MeshStandardMaterial({ color:'#1a1a1a', roughness:0.5 }),
+  collar:    new THREE.MeshStandardMaterial({ color:'#c04040', roughness:0.6 }),
+  tag:       new THREE.MeshStandardMaterial({ color:'#d4af37', metalness:0.8, roughness:0.3 }),
+  eye:       new THREE.MeshStandardMaterial({ color:'#1a1a1a' }),
+  eyeGreen:  new THREE.MeshStandardMaterial({ color:'#7ad67a', emissive:'#4a8a4a', emissiveIntensity:0.3 }),
+  // Car
+  carBody:   new THREE.MeshStandardMaterial({ color:'#d94a3d', roughness:0.4, metalness:0.3 }),
+  carWindow: new THREE.MeshPhysicalMaterial({ color:'#88b4c8', roughness:0.1, transmission:0.4, transparent:true, opacity:0.65 }),
+  tire:      new THREE.MeshStandardMaterial({ color:'#1a1a1a', roughness:0.9 }),
+  rim:       new THREE.MeshStandardMaterial({ color:'#d0d0d0', roughness:0.3, metalness:0.8 }),
+  headlamp:  new THREE.MeshStandardMaterial({ color:'#fff8d0', emissive:'#fff5b0', emissiveIntensity:0.5 }),
+  tailLight: new THREE.MeshStandardMaterial({ color:'#ff3a2a', emissive:'#ff3a2a', emissiveIntensity:0.4 }),
+  // Toys
+  ball:      new THREE.MeshStandardMaterial({ color:'#ffce3a', roughness:0.7 }),
+  featherA:  new THREE.MeshStandardMaterial({ color:'#a8d0e8', roughness:0.9 }),
+  featherB:  new THREE.MeshStandardMaterial({ color:'#e8a8c8', roughness:0.9 }),
+};
+
+// --- Room ---
+const FLOOR = 16;
+const planks = 14;
+for (let i = 0; i < planks; i++) {
+  const p = new THREE.Mesh(new THREE.BoxGeometry(FLOOR, 0.1, FLOOR/planks),
+    i % 2 === 0 ? M.floorLt : M.floorDk);
+  p.position.set(0, 0, -FLOOR/2 + (i + 0.5) * FLOOR/planks);
+  p.receiveShadow = true;
+  scene.add(p);
+}
+const backWall = new THREE.Mesh(new THREE.BoxGeometry(FLOOR, 8, 0.2), M.wall);
+backWall.position.set(0, 4, -FLOOR/2); backWall.receiveShadow = true;
+scene.add(backWall);
+const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.2, 8, FLOOR), M.wall);
+leftWall.position.set(-FLOOR/2, 4, 0); leftWall.receiveShadow = true;
+scene.add(leftWall);
+
+const beamMat = new THREE.MeshStandardMaterial({ color:'#5b3d26', roughness:0.85 });
+[-2, 2].forEach(bz => {
+  const b = new THREE.Mesh(new THREE.BoxGeometry(FLOOR, 0.3, 0.35), beamMat);
+  b.position.set(0, 7.3, bz); b.castShadow = true;
+  scene.add(b);
+});
+
+// Windows on back wall — two panels (leaving room for the Shory poster)
+for (let w of [0, 2]) {
+  const g = new THREE.Group();
+  g.position.set(-4.5 + w * 3.2, 4, -FLOOR/2 + 0.12);
+  scene.add(g);
+  const fm = new THREE.MeshStandardMaterial({ color:'#2b2b2b', roughness:0.5 });
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(2.8, 5.2, 0.15), fm));
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(2.6, 5.0, 0.05), M.glass);
+  glass.position.z = 0.08;
+  g.add(glass);
+  for (let r = 1; r <= 3; r++) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.06, 0.1), fm);
+    m.position.set(0, 2.5 - r * 1.25, 0.1);
+    g.add(m);
+  }
+  const vm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 5.0, 0.1), fm);
+  vm.position.set(0, 0, 0.1);
+  g.add(vm);
+}
+
+// --- SHORY POSTER on back wall (in place of middle window) ---
+const posterGroup = new THREE.Group();
+posterGroup.position.set(-4.5 + 1 * 3.2, 4, -FLOOR/2 + 0.15);
+scene.add(posterGroup);
+// Frame
+const posterFrame = new THREE.Mesh(new THREE.BoxGeometry(2.9, 2.0, 0.12), M.frame);
+posterFrame.castShadow = true;
+posterGroup.add(posterFrame);
+// Shory logo as a textured plane
+const loader = new THREE.TextureLoader();
+loader.load(SHORY_IMG, (tex) => {
+  tex.encoding = THREE.sRGBEncoding;
+  const posterMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 });
+  const poster = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.72), posterMat);
+  poster.position.z = 0.07;
+  posterGroup.add(poster);
+});
+
+// --- Desk + chair + monitor ---
+const DX = -3, DZ = -5.2;
+const deskTop = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.12, 1.8), M.woodLt);
+deskTop.position.set(DX, 2.2, DZ); deskTop.castShadow = deskTop.receiveShadow = true;
+scene.add(deskTop);
+[[-2.1,-0.8],[2.1,-0.8],[-2.1,0.8],[2.1,0.8]].forEach(([lx, lz]) => {
+  const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.2, 0.1), M.metal);
+  leg.position.set(DX + lx, 1.1, DZ + lz); leg.castShadow = true;
+  scene.add(leg);
+});
+const monBase = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.05, 0.5), M.metal);
+monBase.position.set(DX, 2.3, DZ - 0.4);
+scene.add(monBase);
+const monStand = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.5, 0.2), M.metal);
+monStand.position.set(DX, 2.55, DZ - 0.4); monStand.castShadow = true;
+scene.add(monStand);
+const mon = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.4, 0.08), M.black);
+mon.position.set(DX, 3.3, DZ - 0.4); mon.castShadow = true;
+scene.add(mon);
+const monScreen = new THREE.Mesh(new THREE.PlaneGeometry(2.25, 1.25), M.screen);
+monScreen.position.set(DX, 3.3, DZ - 0.355);
+scene.add(monScreen);
+const kb = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, 0.35), M.black);
+kb.position.set(DX, 2.29, DZ + 0.2);
+scene.add(kb);
+const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.25, 20), new THREE.MeshStandardMaterial({ color:'#e8e3db' }));
+mug.position.set(DX + 1.2, 2.4, DZ + 0.3); mug.castShadow = true;
+scene.add(mug);
+
+const chair = new THREE.Group();
+chair.position.set(DX, 0, -3.4);
+scene.add(chair);
+const seat = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.15, 1.1), M.black);
+seat.position.y = 1.3; seat.castShadow = true;
+chair.add(seat);
+const backR = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.4, 0.12), M.black);
+backR.position.set(0, 2.0, -0.5); backR.castShadow = true;
+chair.add(backR);
+const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.2, 12), M.metal);
+stem.position.y = 0.7;
+chair.add(stem);
+const cBase = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.08, 20), M.metal);
+cBase.position.y = 0.1;
+chair.add(cBase);
+
+// --- Couch ---
+const couch = new THREE.Group();
+couch.position.set(5, 0, 2.5);
+couch.rotation.y = -Math.PI / 2;
+scene.add(couch);
+const cB = new THREE.Mesh(new THREE.BoxGeometry(4, 0.6, 1.6), M.couch);
+cB.position.y = 0.75; cB.castShadow = cB.receiveShadow = true;
+couch.add(cB);
+const cS = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.35, 1.4), M.couch);
+cS.position.y = 1.25; cS.castShadow = true;
+couch.add(cS);
+const cBack = new THREE.Mesh(new THREE.BoxGeometry(4, 1.2, 0.4), M.couch);
+cBack.position.set(0, 1.55, -0.6); cBack.castShadow = true;
+couch.add(cBack);
+[-1.85, 1.85].forEach(ax => {
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.1, 1.6), M.couch);
+  arm.position.set(ax, 1.4, 0); arm.castShadow = true;
+  couch.add(arm);
+});
+const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.55, 0.3), M.pillowA);
+p1.position.set(-1.2, 1.75, -0.4); p1.rotation.z = 0.08; p1.castShadow = true;
+couch.add(p1);
+const p2 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.55, 0.3), M.pillowB);
+p2.position.set(1.0, 1.75, -0.4); p2.rotation.z = -0.12; p2.castShadow = true;
+couch.add(p2);
+
+const rug = new THREE.Mesh(new THREE.CircleGeometry(2.4, 32), M.rug);
+rug.rotation.x = -Math.PI/2;
+rug.position.set(1, 0.06, 1);
+rug.receiveShadow = true;
+scene.add(rug);
+
+const cTable = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.08, 0.9), M.wood);
+cTable.position.set(1, 0.9, 1); cTable.castShadow = cTable.receiveShadow = true;
+scene.add(cTable);
+[[-0.7,-0.4],[0.7,-0.4],[-0.7,0.4],[0.7,0.4]].forEach(([lx, lz]) => {
+  const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.9, 0.08), M.wood);
+  leg.position.set(1 + lx, 0.45, 1 + lz); leg.castShadow = true;
+  scene.add(leg);
+});
+
+// Pendant lamp
+const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 2.8, 8), new THREE.MeshStandardMaterial({ color:'#1a1a1a' }));
+cord.position.set(0, 5.8, 0);
+scene.add(cord);
+const shade = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.7, 24, 1, true), M.lampShade);
+shade.position.set(0, 4.2, 0);
+scene.add(shade);
+const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), M.lampBulb);
+bulb.position.set(0, 4.0, 0);
+scene.add(bulb);
+
+// Plants
+function plant(x, z, s = 1) {
+  const g = new THREE.Group();
+  g.position.set(x, 0, z); g.scale.setScalar(s);
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.25, 0.45, 16), M.pot);
+  pot.position.y = 0.28; pot.castShadow = true;
+  g.add(pot);
+  for (let i = 0; i < 5; i++) {
+    const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(0.35 + Math.random() * 0.15, 0),
+      i % 2 === 0 ? M.leaf : M.leafLt);
+    leaf.position.set((Math.random()-0.5)*0.3, 0.7 + Math.random()*0.6, (Math.random()-0.5)*0.3);
+    leaf.scale.y = 1.6; leaf.castShadow = true;
+    g.add(leaf);
+  }
+  return g;
+}
+scene.add(plant(-6.5, -6, 1.1));
+scene.add(plant(5.5, -6.2, 0.85));
+scene.add(plant(-5.5, 5, 0.95));
+
+// Bookshelf
+const shelf = new THREE.Group();
+shelf.position.set(-FLOOR/2 + 0.3, 0, 3);
+scene.add(shelf);
+const shelfFrame = new THREE.Mesh(new THREE.BoxGeometry(0.3, 5.2, 2.8), M.wood);
+shelfFrame.position.set(0, 2.6, 0); shelfFrame.castShadow = true;
+shelf.add(shelfFrame);
+const bookColors = ['#7a3b2a','#2a4a6a','#3a6a4a','#8a5a2a','#4a2a4a','#7a7a3a'];
+for (let r = 0; r < 4; r++) {
+  for (let i = 0; i < 8; i++) {
+    const h = 0.55 + Math.random() * 0.2;
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.22, h, 0.15 + Math.random() * 0.08),
+      new THREE.MeshStandardMaterial({ color: bookColors[Math.floor(Math.random() * bookColors.length)], roughness:0.85 }));
+    b.position.set(0.22, 0.9 + r * 1.1 + h/2, -1.2 + i * 0.3);
+    b.castShadow = true;
+    shelf.add(b);
+  }
+}
+
+// ===================================================================
+// THE CAR
+// ===================================================================
+const car = new THREE.Group();
+scene.add(car);
+
+const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.35, 0.95), M.carBody);
+chassis.position.y = 0.38; chassis.castShadow = true;
+car.add(chassis);
+const hood = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.2, 0.85), M.carBody);
+hood.position.set(0.55, 0.65, 0); hood.castShadow = true;
+car.add(hood);
+const windshield = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.45, 0.8), M.carWindow);
+windshield.position.set(0.25, 0.78, 0); windshield.rotation.z = -0.3;
+car.add(windshield);
+const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.9), M.carBody);
+trunk.position.set(-0.65, 0.80, 0); trunk.castShadow = true;
+car.add(trunk);
+const frontBump = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.9), M.metal);
+frontBump.position.set(0.92, 0.35, 0);
+car.add(frontBump);
+const backBump = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.9), M.metal);
+backBump.position.set(-0.92, 0.35, 0);
+car.add(backBump);
+const hlGeo = new THREE.SphereGeometry(0.09, 12, 12);
+[-0.3, 0.3].forEach(zz => {
+  const hl = new THREE.Mesh(hlGeo, M.headlamp);
+  hl.position.set(0.95, 0.45, zz);
+  car.add(hl);
+});
+const tlGeo = new THREE.BoxGeometry(0.05, 0.1, 0.15);
+[-0.35, 0.35].forEach(zz => {
+  const tl = new THREE.Mesh(tlGeo, M.tailLight);
+  tl.position.set(-0.94, 0.5, zz);
+  car.add(tl);
+});
+const steering = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.02, 8, 20), M.black);
+steering.rotation.y = Math.PI / 2;
+steering.position.set(0.2, 0.85, 0);
+car.add(steering);
+
+// Wheels — separate so they spin
+const wheels = [];
+const wheelGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.14, 18);
+[[0.55,-0.45],[0.55,0.45],[-0.55,-0.45],[-0.55,0.45]].forEach(([wx, wz]) => {
+  const wg = new THREE.Group();
+  wg.position.set(wx, 0.22, wz);
+  const tire = new THREE.Mesh(wheelGeo, M.tire);
+  tire.rotation.x = Math.PI / 2; tire.castShadow = true;
+  wg.add(tire);
+  const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.16, 10), M.rim);
+  rim.rotation.x = Math.PI / 2;
+  wg.add(rim);
+  car.add(wg);
+  wheels.push(wg);
+});
+
+// ===================================================================
+// THE DOG (rigged)
+// ===================================================================
+const dog = new THREE.Group();
+scene.add(dog);
+const dogBodyG = new THREE.Group();
+dog.add(dogBodyG);
+
+const dogTorso = new THREE.Mesh(new THREE.SphereGeometry(0.4, 20, 16), M.dogFur);
+dogTorso.scale.set(1.4, 0.95, 1);
+dogTorso.position.set(0, 0.75, 0); dogTorso.castShadow = true;
+dogBodyG.add(dogTorso);
+const dogBellyMesh = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 12), M.dogBelly);
+dogBellyMesh.scale.set(1.3, 0.7, 0.9);
+dogBellyMesh.position.set(0, 0.58, 0);
+dogBodyG.add(dogBellyMesh);
+
+const dogHeadG = new THREE.Group();
+dogHeadG.position.set(0.55, 1.0, 0);
+dogBodyG.add(dogHeadG);
+const dogHead = new THREE.Mesh(new THREE.SphereGeometry(0.3, 20, 16), M.dogFur);
+dogHead.castShadow = true;
+dogHeadG.add(dogHead);
+const snout = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 12), M.dogBelly);
+snout.scale.set(1.2, 0.8, 0.9);
+snout.position.set(0.23, -0.08, 0); snout.castShadow = true;
+dogHeadG.add(snout);
+const dogNoseM = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 12), M.dogNose);
+dogNoseM.position.set(0.4, -0.05, 0);
+dogHeadG.add(dogNoseM);
+const dogEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), M.eye);
+dogEyeL.position.set(0.19, 0.08, -0.14);
+dogHeadG.add(dogEyeL);
+const dogEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), M.eye);
+dogEyeR.position.set(0.19, 0.08, 0.14);
+dogHeadG.add(dogEyeR);
+const earGeoD = new THREE.SphereGeometry(0.12, 12, 10);
+const dogEarL = new THREE.Mesh(earGeoD, M.dogFur);
+dogEarL.scale.set(0.5, 1.2, 0.8);
+dogEarL.position.set(-0.15, 0.12, -0.28);
+dogHeadG.add(dogEarL);
+const dogEarR = new THREE.Mesh(earGeoD, M.dogFur);
+dogEarR.scale.set(0.5, 1.2, 0.8);
+dogEarR.position.set(-0.15, 0.12, 0.28);
+dogHeadG.add(dogEarR);
+
+const collar = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.04, 8, 20), M.collar);
+collar.rotation.y = Math.PI / 2;
+collar.position.set(0.35, 0.88, 0);
+dogBodyG.add(collar);
+const tagM = new THREE.Mesh(new THREE.CircleGeometry(0.05, 16), M.tag);
+tagM.position.set(0.43, 0.78, 0);
+dogBodyG.add(tagM);
+
+// Legs (groups for swing)
+const dogLegs = [];
+[[0.28,-0.28],[0.28,0.28],[-0.28,-0.28],[-0.28,0.28]].forEach(([lx, lz]) => {
+  const legG = new THREE.Group();
+  legG.position.set(lx, 0.55, lz);
+  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.55, 10), M.dogFur);
+  leg.position.y = -0.22; leg.castShadow = true;
+  legG.add(leg);
+  dogBodyG.add(legG);
+  dogLegs.push(legG);
+});
+
+// Tail
+const dogTailG = new THREE.Group();
+dogTailG.position.set(-0.45, 0.85, 0);
+dogBodyG.add(dogTailG);
+const dogTail = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.03, 0.5, 10), M.dogFur);
+dogTail.position.set(-0.2, 0.1, 0); dogTail.rotation.z = Math.PI / 2.5;
+dogTail.castShadow = true;
+dogTailG.add(dogTail);
+
+// ===================================================================
+// THE CAT (rigged)
+// ===================================================================
+const cat = new THREE.Group();
+scene.add(cat);
+const catBodyG = new THREE.Group();
+cat.add(catBodyG);
+
+const catTorso = new THREE.Mesh(new THREE.SphereGeometry(0.32, 20, 16), M.catFur);
+catTorso.scale.set(1.3, 0.85, 1);
+catTorso.position.set(0, 0.45, 0); catTorso.castShadow = true;
+catBodyG.add(catTorso);
+const catBellyMesh = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12), M.catBelly);
+catBellyMesh.scale.set(1.1, 0.6, 0.85);
+catBellyMesh.position.set(0, 0.35, 0);
+catBodyG.add(catBellyMesh);
+
+const catHeadG = new THREE.Group();
+catHeadG.position.set(0.38, 0.6, 0);
+catBodyG.add(catHeadG);
+const catHead = new THREE.Mesh(new THREE.SphereGeometry(0.22, 20, 16), M.catFur);
+catHead.castShadow = true;
+catHeadG.add(catHead);
+const catEarGeo = new THREE.ConeGeometry(0.08, 0.18, 12);
+const catEarL = new THREE.Mesh(catEarGeo, M.catFur);
+catEarL.position.set(-0.02, 0.19, -0.11);
+catHeadG.add(catEarL);
+const catEarR = new THREE.Mesh(catEarGeo, M.catFur);
+catEarR.position.set(-0.02, 0.19, 0.11);
+catHeadG.add(catEarR);
+const catEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 10), M.eyeGreen);
+catEyeL.position.set(0.17, 0.04, -0.09);
+catHeadG.add(catEyeL);
+const catEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 10), M.eyeGreen);
+catEyeR.position.set(0.17, 0.04, 0.09);
+catHeadG.add(catEyeR);
+const catNoseM = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 8), M.catNose);
+catNoseM.position.set(0.21, -0.02, 0);
+catHeadG.add(catNoseM);
+
+const catLegs = [];
+[[0.2,-0.17],[0.2,0.17],[-0.2,-0.17],[-0.2,0.17]].forEach(([lx, lz]) => {
+  const legG = new THREE.Group();
+  legG.position.set(lx, 0.33, lz);
+  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.33, 8), M.catFur);
+  leg.position.y = -0.14; leg.castShadow = true;
+  legG.add(leg);
+  catBodyG.add(legG);
+  catLegs.push(legG);
+});
+
+const catTailG = new THREE.Group();
+catTailG.position.set(-0.35, 0.55, 0);
+catBodyG.add(catTailG);
+const tailSegs = [];
+for (let i = 0; i < 5; i++) {
+  const s = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), M.catFur);
+  s.castShadow = true;
+  catTailG.add(s);
+  tailSegs.push(s);
+}
+
+// ===================================================================
+// TOYS: tennis ball + feather toy
+// ===================================================================
+const ball = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 12), M.ball);
+ball.castShadow = true;
+ball.position.set(0.5, 0.13, 3.2);
+scene.add(ball);
+
+const feather = new THREE.Group();
+feather.position.set(-1.8, 0.02, 1.8);
+scene.add(feather);
+const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.5, 8),
+  new THREE.MeshStandardMaterial({ color:'#8b6440' }));
+stick.rotation.z = Math.PI / 2; stick.position.set(0, 0.04, 0);
+feather.add(stick);
+[[0.22,0.05,0.03,M.featherA],[0.28,0.08,-0.02,M.featherB],[0.24,0.1,0.06,M.featherA]].forEach(([fx,fy,fz,mat]) => {
+  const f = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.2, 6), mat);
+  f.position.set(fx, fy, fz); f.rotation.z = Math.PI / 2.2;
+  feather.add(f);
+});
+
+// Dust motes
+const dustCount = 100;
+const dustGeo = new THREE.BufferGeometry();
+const dustPos = new Float32Array(dustCount * 3);
+const dustSeed = [];
+for (let i = 0; i < dustCount; i++) {
+  dustPos[i*3] = (Math.random() - 0.5) * 14;
+  dustPos[i*3+1] = Math.random() * 6 + 0.5;
+  dustPos[i*3+2] = (Math.random() - 0.5) * 14;
+  dustSeed.push(Math.random() * Math.PI * 2);
+}
+dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+const dust = new THREE.Points(dustGeo,
+  new THREE.PointsMaterial({ color:'#fff3d8', size:0.06, transparent:true, opacity:0.5, sizeAttenuation:true }));
+scene.add(dust);
+
+// ===================================================================
+// STATE + UI WIRING
+// ===================================================================
+const state = {
+  timeOfDay: 'dusk',
+  mode: 'drive',   // 'drive' | 'play' | 'walk'
+  autoRotate: true,
+  dragging: false, lastX: 0, lastY: 0,
+  mouseX: 0.5,     // 0..1 for wall tone
+};
+
+function setMode(m) {
+  state.mode = m;
+  ['Drive','Play','Walk'].forEach((n, i) => {
+    const keys = ['drive','play','walk'];
+    document.getElementById('btn' + n).classList.toggle('on', state.mode === keys[i]);
+  });
+  if (m === 'drive') {
+    setScene('Dog goes for a drive', 'The pup zooms around the loft in his little red car. Cat watches from the rug.');
+  } else if (m === 'play') {
+    setScene('They play together', 'Dog chases the ball. Cat chases the dog. Nobody wins.');
+  } else {
+    setScene('A quiet walk', 'Dog patrols his kingdom. Cat wanders her own route.');
+  }
+}
+function setScene(ttl, desc) {
+  document.getElementById('sceneTtl').textContent = ttl;
+  document.getElementById('sceneDesc').textContent = desc;
+}
+function setTimeOfDay(t) {
+  state.timeOfDay = t;
+  if (t === 'day') {
+    ambient.intensity = 0.7; hemi.color.set('#cfe6ff'); hemi.intensity = 0.8;
+    sun.color.set('#ffffff'); sun.intensity = 1.5; sun.position.set(-8, 16, 6);
+    warmFill.intensity = 0.3; pendant.intensity = 0;
+    M.lampBulb.emissiveIntensity = 0; M.lampShade.emissiveIntensity = 0;
+    M.headlamp.emissiveIntensity = 0.2;
+    scene.background = new THREE.Color('#f3efe6'); scene.fog.color.set('#f3efe6');
+    setCap('Midday sun · 12:08', 'Midday sun', 'Bright light pours across the plank floor.');
+  } else if (t === 'dusk') {
+    ambient.intensity = 0.45; hemi.color.set('#ffd8a8'); hemi.intensity = 0.6;
+    sun.color.set('#ffb374'); sun.intensity = 1.1; sun.position.set(-10, 8, 6);
+    warmFill.intensity = 0.8; pendant.intensity = 0.4;
+    M.lampBulb.emissiveIntensity = 0.3; M.lampShade.emissiveIntensity = 0.1;
+    M.headlamp.emissiveIntensity = 0.5;
+    scene.background = new THREE.Color('#f3ece0'); scene.fog.color.set('#f3ece0');
+    setCap('Golden hour · 17:42', 'Golden hour', 'Low sun through the west windows. Warm air.');
+  } else {
+    ambient.intensity = 0.18; hemi.color.set('#3a4a6a'); hemi.intensity = 0.35;
+    sun.color.set('#4a5a8a'); sun.intensity = 0.2;
+    warmFill.intensity = 1.2; pendant.intensity = 1.6;
+    M.lampBulb.emissiveIntensity = 1.2; M.lampShade.emissiveIntensity = 0.4;
+    M.headlamp.emissiveIntensity = 1.2;
+    scene.background = new THREE.Color('#1a1a24'); scene.fog.color.set('#1a1a24');
+    setCap('Late night · 23:18', 'Lamp glow', 'Pendant on. Headlights cut through the dark.');
+  }
+  document.getElementById('btnDay').classList.toggle('on', t === 'day');
+  document.getElementById('btnDusk').classList.toggle('on', t === 'dusk');
+  document.getElementById('btnNight').classList.toggle('on', t === 'night');
+}
+function setCap(t, a, d) {
+  document.getElementById('cap').textContent = t;
+}
+
+// Mouse position drives wall tone
+const stageEl = document.getElementById('stage');
+stageEl.addEventListener('mousemove', (e) => {
+  const rect = stageEl.getBoundingClientRect();
+  state.mouseX = (e.clientX - rect.left) / rect.width;
+  // Interpolate wall color: cream → warm peach → dusty rose → sage → slate blue
+  const stops = [
+    { t: 0.00, c: new THREE.Color('#e9dcc7') },
+    { t: 0.25, c: new THREE.Color('#e8c8a8') },
+    { t: 0.50, c: new THREE.Color('#d8a898') },
+    { t: 0.75, c: new THREE.Color('#a8b898') },
+    { t: 1.00, c: new THREE.Color('#88a0b8') },
+  ];
+  const x = Math.max(0, Math.min(1, state.mouseX));
+  let a = stops[0], b = stops[stops.length - 1];
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (x >= stops[i].t && x <= stops[i+1].t) { a = stops[i]; b = stops[i+1]; break; }
+  }
+  const localT = (x - a.t) / (b.t - a.t);
+  const c = a.c.clone().lerp(b.c, localT);
+  M.wall.color.copy(c);
+});
+
+// Buttons
+document.getElementById('btnDrive').onclick = () => setMode('drive');
+document.getElementById('btnPlay').onclick = () => setMode('play');
+document.getElementById('btnWalk').onclick = () => setMode('walk');
+document.getElementById('btnDay').onclick = () => setTimeOfDay('day');
+document.getElementById('btnDusk').onclick = () => setTimeOfDay('dusk');
+document.getElementById('btnNight').onclick = () => setTimeOfDay('night');
+document.getElementById('btnRotate').onclick = () => {
+  state.autoRotate = !state.autoRotate;
+  document.getElementById('btnRotate').classList.toggle('on', state.autoRotate);
+};
+document.getElementById('btnReset').onclick = () => {
+  cam.theta = Math.PI * 0.28; cam.phi = Math.PI * 0.36; cam.radius = 21;
+  applyCam();
+};
+
+// Drag to orbit, scroll to zoom
+const canvas = renderer.domElement;
+function onDown(e) {
+  const p = e.touches ? e.touches[0] : e;
+  state.dragging = true; state.lastX = p.clientX; state.lastY = p.clientY;
+  state.autoRotate = false;
+  document.getElementById('btnRotate').classList.remove('on');
+}
+function onDragMove(e) {
+  if (!state.dragging) return;
+  const p = e.touches ? e.touches[0] : e;
+  const dx = p.clientX - state.lastX;
+  const dy = p.clientY - state.lastY;
+  state.lastX = p.clientX; state.lastY = p.clientY;
+  cam.theta -= dx * 0.006;
+  cam.phi = Math.max(0.15, Math.min(1.45, cam.phi - dy * 0.005));
+  applyCam();
+}
+function onUp() { state.dragging = false; }
+function onWheel(e) {
+  e.preventDefault();
+  cam.radius = Math.max(10, Math.min(35, cam.radius + e.deltaY * 0.015));
+  applyCam();
+}
+canvas.addEventListener('mousedown', onDown);
+canvas.addEventListener('mousemove', onDragMove);
+window.addEventListener('mouseup', onUp);
+canvas.addEventListener('touchstart', onDown, { passive: true });
+canvas.addEventListener('touchmove', onDragMove, { passive: true });
+canvas.addEventListener('touchend', onUp);
+canvas.addEventListener('wheel', onWheel, { passive: false });
+
+window.addEventListener('resize', () => {
+  renderer.setSize(W(), H());
+  camera.aspect = W()/H();
+  camera.updateProjectionMatrix();
+});
+
+setTimeOfDay('dusk');
+setMode('drive');
+
+// ===================================================================
+// PATHS + ANIMATION
+// ===================================================================
+// Car drives an oval. heading = atan2(dx, dz) convention for Three.js Y-rotation
+function carPath(u) {
+  const a = 2 * Math.PI * u;
+  const x = 0.8 + 3.2 * Math.cos(a);
+  const z = 2.2 + 2.2 * Math.sin(a);
+  const dx = -3.2 * Math.sin(a);
+  const dz = 2.2 * Math.cos(a);
+  return { x, z, h: Math.atan2(dx, dz) };
+}
+// Cat walks a figure-8 on the rug
+function catPath(u) {
+  const a = 2 * Math.PI * u;
+  const x = 1.0 + 1.7 * Math.sin(a * 2);
+  const z = 1.0 + 1.4 * Math.sin(a);
+  const dx = 3.4 * Math.cos(a * 2);
+  const dz = 1.4 * Math.cos(a);
+  return { x, z, h: Math.atan2(dx, dz) };
+}
+// Dog walks a loop (only in 'walk' mode) — rectangular patrol
+function dogWalkPath(u) {
+  const a = 2 * Math.PI * u;
+  const x = -0.5 + 2.8 * Math.cos(a);
+  const z = 2.5 + 1.8 * Math.sin(a);
+  const dx = -2.8 * Math.sin(a);
+  const dz = 1.8 * Math.cos(a);
+  return { x, z, h: Math.atan2(dx, dz) };
+}
+
+let carU = 0, catU = 0, dogU = 0;
+let ballV = { x: 0, y: 0, z: 0 };
+let ballLastKick = 0;
+
+const clock = new THREE.Clock();
+
+function tick() {
+  const t = clock.getElapsedTime();
+  const dt = Math.min(0.05, clock.getDelta());
+
+  if (state.autoRotate) {
+    cam.theta += 0.0018;
+    applyCam();
+  }
+
+  // Dust float
+  const arr = dust.geometry.attributes.position.array;
+  for (let i = 0; i < dustCount; i++) {
+    arr[i*3+1] += Math.sin(t * 0.6 + dustSeed[i]) * 0.002;
+    arr[i*3]   += Math.cos(t * 0.4 + dustSeed[i]) * 0.0015;
+  }
+  dust.geometry.attributes.position.needsUpdate = true;
+
+  // ---------- DRIVE MODE ----------
+  if (state.mode === 'drive') {
+    carU = (carU + dt * 0.10) % 1;
+    const pos = carPath(carU);
+    car.position.set(pos.x, 0, pos.z);
+    car.rotation.y = pos.h;
+    car.visible = true;
+
+    // Spin wheels
+    wheels.forEach(w => w.rotation.x -= dt * 8);
+
+    // Dog is IN the car — position him sitting in the driver seat
+    dog.visible = true;
+    dog.scale.setScalar(0.55);    // smaller so he fits
+    dog.position.set(pos.x, 0.35, pos.z);
+    dog.rotation.y = pos.h;
+    // Reset body rotation so he sits upright
+    dogBodyG.rotation.set(0, 0, 0);
+    // "Paws on the wheel" — tilt head slightly forward
+    dogHeadG.rotation.z = -0.1;
+    // Freeze legs (he's sitting, not walking)
+    dogLegs.forEach(l => l.rotation.x = 0);
+    // Excited tail wag
+    dogTailG.rotation.x = Math.sin(t * 10) * 0.8;
+    // Ear flap from wind
+    dogEarL.rotation.x = -0.3 + Math.sin(t * 5) * 0.15;
+    dogEarR.rotation.x = -0.3 + Math.sin(t * 5 + 0.4) * 0.15;
+
+    // Cat walks her figure-8 on the rug
+    catU = (catU + dt * 0.06) % 1;
+    const cp = catPath(catU);
+    cat.visible = true;
+    cat.scale.setScalar(0.7);
+    cat.position.set(cp.x, 0, cp.z);
+    cat.rotation.y = cp.h;
+    // Cat walking legs
+    const cs = t * 6;
+    catLegs[0].rotation.x = Math.sin(cs) * 0.5;
+    catLegs[3].rotation.x = Math.sin(cs) * 0.5;
+    catLegs[1].rotation.x = -Math.sin(cs) * 0.5;
+    catLegs[2].rotation.x = -Math.sin(cs) * 0.5;
+    // Tail flick
+    tailSegs.forEach((s, i) => {
+      const phase = t * 3 + i * 0.5;
+      s.position.set(-0.1 * (i+1), 0.05 + i * 0.02, Math.sin(phase) * 0.1);
+    });
+    catTailG.rotation.y = Math.sin(t * 2) * 0.3;
+
+    ball.visible = false;
+    feather.visible = true;
+  }
+  // ---------- PLAY MODE ----------
+  else if (state.mode === 'play') {
+    car.visible = false;
+
+    // Dog runs after the ball
+    dog.visible = true;
+    dog.scale.setScalar(1);
+    // Target: wherever the ball is. Chase it.
+    const target = ball.position;
+    const dogPos = dog.position;
+    const dirX = target.x - dogPos.x;
+    const dirZ = target.z - dogPos.z;
+    const dist = Math.sqrt(dirX * dirX + dirZ * dirZ);
+    if (dist > 0.6) {
+      const speed = 2.5;
+      dog.position.x += (dirX / dist) * speed * dt;
+      dog.position.z += (dirZ / dist) * speed * dt;
+      dog.rotation.y = Math.atan2(dirX, dirZ);
+      // Running legs (opposite diagonals)
+      const rs = t * 12;
+      dogLegs[0].rotation.x = Math.sin(rs) * 0.8;
+      dogLegs[3].rotation.x = Math.sin(rs) * 0.8;
+      dogLegs[1].rotation.x = -Math.sin(rs) * 0.8;
+      dogLegs[2].rotation.x = -Math.sin(rs) * 0.8;
+      // Body bob
+      dogBodyG.position.y = Math.abs(Math.sin(rs)) * 0.05;
+    } else {
+      // Bat the ball
+      if (t - ballLastKick > 1.5) {
+        ballV.x = (Math.random() - 0.5) * 4;
+        ballV.z = (Math.random() - 0.5) * 4;
+        ballV.y = 2.5;
+        ballLastKick = t;
+      }
+      dogLegs.forEach(l => l.rotation.x = 0);
+      dogBodyG.position.y = 0;
+    }
+    dogHeadG.rotation.z = Math.sin(t * 2) * 0.15;
+    dogTailG.rotation.x = Math.sin(t * 10) * 0.7;
+    dogEarL.rotation.x = Math.sin(t * 3) * 0.15;
+    dogEarR.rotation.x = Math.sin(t * 3 + 0.4) * 0.15;
+
+    // Ball physics
+    ball.visible = true;
+    ball.position.x += ballV.x * dt;
+    ball.position.z += ballV.z * dt;
+    ball.position.y += ballV.y * dt;
+    ballV.y -= 9.8 * dt;
+    if (ball.position.y < 0.13) {
+      ball.position.y = 0.13;
+      ballV.y *= -0.55;
+      ballV.x *= 0.85;
+      ballV.z *= 0.85;
+    }
+    // Clamp ball inside room
+    if (ball.position.x < -5) { ball.position.x = -5; ballV.x = Math.abs(ballV.x); }
+    if (ball.position.x > 5) { ball.position.x = 5; ballV.x = -Math.abs(ballV.x); }
+    if (ball.position.z < -5) { ball.position.z = -5; ballV.z = Math.abs(ballV.z); }
+    if (ball.position.z > 5) { ball.position.z = 5; ballV.z = -Math.abs(ballV.z); }
+
+    // Cat chases the dog (with some distance offset)
+    cat.visible = true;
+    cat.scale.setScalar(0.85);
+    const catTargetX = dog.position.x - Math.sin(dog.rotation.y) * 1.8;
+    const catTargetZ = dog.position.z - Math.cos(dog.rotation.y) * 1.8;
+    const cdx = catTargetX - cat.position.x;
+    const cdz = catTargetZ - cat.position.z;
+    const cDist = Math.sqrt(cdx * cdx + cdz * cdz);
+    if (cDist > 0.2) {
+      const cSpeed = 2.0;
+      cat.position.x += (cdx / cDist) * cSpeed * dt;
+      cat.position.z += (cdz / cDist) * cSpeed * dt;
+      cat.rotation.y = Math.atan2(cdx, cdz);
+      const cs = t * 10;
+      catLegs[0].rotation.x = Math.sin(cs) * 0.7;
+      catLegs[3].rotation.x = Math.sin(cs) * 0.7;
+      catLegs[1].rotation.x = -Math.sin(cs) * 0.7;
+      catLegs[2].rotation.x = -Math.sin(cs) * 0.7;
+    }
+    tailSegs.forEach((s, i) => {
+      const phase = t * 5 + i * 0.5;
+      s.position.set(-0.1 * (i+1), 0.05 + i * 0.02, Math.sin(phase) * 0.15);
+    });
+
+    feather.visible = true;
+  }
+  // ---------- WALK MODE ----------
+  else {
+    car.visible = false;
+    ball.visible = false;
+    feather.visible = true;
+
+    // Dog walks slow loop
+    dogU = (dogU + dt * 0.04) % 1;
+    const dp = dogWalkPath(dogU);
+    dog.visible = true;
+    dog.scale.setScalar(1);
+    dog.position.set(dp.x, 0, dp.z);
+    dog.rotation.y = dp.h;
+    const ws = t * 4;
+    dogLegs[0].rotation.x = Math.sin(ws) * 0.4;
+    dogLegs[3].rotation.x = Math.sin(ws) * 0.4;
+    dogLegs[1].rotation.x = -Math.sin(ws) * 0.4;
+    dogLegs[2].rotation.x = -Math.sin(ws) * 0.4;
+    dogBodyG.position.y = Math.abs(Math.sin(ws)) * 0.03;
+    dogHeadG.rotation.z = Math.sin(t * 0.9) * 0.08;
+    dogTailG.rotation.x = Math.sin(t * 3) * 0.3;
+    dogEarL.rotation.x = Math.sin(t * 2) * 0.1;
+    dogEarR.rotation.x = Math.sin(t * 2 + 0.5) * 0.1;
+
+    // Cat walks figure-8
+    catU = (catU + dt * 0.05) % 1;
+    const cp = catPath(catU);
+    cat.visible = true;
+    cat.scale.setScalar(0.85);
+    cat.position.set(cp.x, 0, cp.z);
+    cat.rotation.y = cp.h;
+    const cs = t * 5;
+    catLegs[0].rotation.x = Math.sin(cs) * 0.4;
+    catLegs[3].rotation.x = Math.sin(cs) * 0.4;
+    catLegs[1].rotation.x = -Math.sin(cs) * 0.4;
+    catLegs[2].rotation.x = -Math.sin(cs) * 0.4;
+    tailSegs.forEach((s, i) => {
+      const phase = t * 2 + i * 0.5;
+      s.position.set(-0.1 * (i+1), 0.05 + i * 0.02, Math.sin(phase) * 0.08);
+    });
+  }
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+tick();
+</script>
+
+</body>
+</html>
