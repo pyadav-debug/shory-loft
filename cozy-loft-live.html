@@ -629,6 +629,11 @@ const state = {
   mouseX: 0.5,     // 0..1 for wall tone
 };
 
+// Declared here (above setMode) so setMode can safely reset them on mode switch
+let carU = 0, catU = 0, dogU = 0;
+let ballV = { x: 0, y: 0, z: 0 };
+let ballLastKick = 0;
+
 function setMode(m) {
   state.mode = m;
   // FIX: Reset ball state so it doesn't fly off when re-entering play mode
@@ -792,10 +797,6 @@ function dogWalkPath(u) {
   const dz = 1.8 * Math.cos(a);
   return { x, z, h: Math.atan2(dx, dz) };
 }
-
-let carU = 0, catU = 0, dogU = 0;
-let ballV = { x: 0, y: 0, z: 0 };
-let ballLastKick = 0;
 
 // ===================================================================
 // FIX: Use getDelta() first, then getElapsedTime().
